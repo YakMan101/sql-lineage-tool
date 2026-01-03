@@ -1,0 +1,8 @@
+ord_id,cust_id,ord_date,amt,status
+101,1,2024-01-15,150.00,completed
+102,2,2024-01-16,75.50,completed
+103,1,2024-01-17,200.00,pending
+104,3,2024-01-18,50.25,completed
+105,4,2024-01-19,125.00,completed
+106,2,2024-01-20,300.00,completed
+107,5,2024-01-21,80.75,pending
