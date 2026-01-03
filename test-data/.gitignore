@@ -1,0 +1,18 @@
+# dbt artifacts - these are generated and should not be versioned
+target/
+dbt_packages/
+logs/
+
+# dbt user settings (personal)
+.user.yml
+
+# Credentials - NEVER commit passwords!
+# profiles.yml should be in ~/.dbt/ or use environment variables
+profiles.yml
+
+# Python
+*.pyc
+__pycache__/
+.venv
+venv
+*.egg-info/
