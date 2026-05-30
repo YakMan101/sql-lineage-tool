@@ -1,3 +1,10 @@
+#### Java related files ####
+
+# Gradle
+.gradle/
+build/
+
+
 # Compiled class file
 *.class
 
@@ -22,3 +29,15 @@
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 replay_pid*
+
+
+#### Python related files ####
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment variables
+.env
+.venv

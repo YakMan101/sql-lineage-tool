@@ -1,0 +1,43 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+group = 'com.sqllineage'
+version = '0.1.0'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+application {
+    mainClass = 'com.sqllineage.cli.Main'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // SQL parsing
+    implementation 'org.apache.calcite:calcite-core:1.37.0'
+
+    // Graph data structure
+    implementation 'org.jgrapht:jgrapht-core:1.5.2'
+
+    // JSON (dbt manifest parsing + output)
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.17.0'
+
+    // CLI
+    implementation 'info.picocli:picocli:4.7.6'
+    annotationProcessor 'info.picocli:picocli-codegen:4.7.6'
+
+    // Testing
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+test {
+    useJUnitPlatform()
+}

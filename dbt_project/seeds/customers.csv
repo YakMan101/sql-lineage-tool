@@ -1,0 +1,6 @@
+customer_id,email,first_name,last_name,created_at,country
+1,alice@example.com,Alice,Smith,2023-01-15 09:00:00,UK
+2,bob@example.com,Bob,Jones,2023-02-20 11:30:00,US
+3,carol@example.com,Carol,White,2023-03-05 14:00:00,AU
+4,dan@example.com,Dan,Brown,2023-04-10 08:45:00,UK
+5,eva@example.com,Eva,Green,2023-05-22 16:20:00,US

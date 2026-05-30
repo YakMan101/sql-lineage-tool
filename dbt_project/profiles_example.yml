@@ -1,0 +1,11 @@
+sample_dbt_project:
+  target: staging
+  outputs:
+    staging:
+      type: bigquery
+      method: oauth
+      project: your-project
+      dataset: dbt_<name>
+      threads: 4
+      timeout_seconds: 300
+      location: EU
