@@ -4,18 +4,6 @@ A column-level SQL lineage tool built in Java using Apache Calcite, initially ta
 
 ---
 
-## Goal
-
-Track the evolution of a table column upstream and/or downstream across a SQL project. Output lineage as text trees, graphs, or images.
-
----
-
-## Lineage Strategy
-
-**Column-level is the primary target.** Table-level lineage is derived for free as a projection of the column graph (collapse column nodes by table). Additionally, for dbt projects, table-level lineage is already available from `dbt/target/manifest.json` and will be leveraged directly rather than re-derived.
-
----
-
 ## Architecture
 
 ```
@@ -117,33 +105,3 @@ src/main/java/com/sqllineage/
 ├── analysis/     ← upstream/downstream traversal logic
 └── output/       ← TextRenderer, DotRenderer, JsonRenderer
 ```
-
----
-
-## Key Libraries
-
-| Library | Purpose |
-|---|---|
-| `apache-calcite-core` | SQL parsing + BigQuery dialect |
-| `jgrapht-core` | DAG data structure + traversal |
-| `jackson-databind` | dbt manifest parsing + JSON output |
-| `picocli` | CLI flags |
-
----
-
-## Development Checklist
-
-- [ ] 1. Project scaffold — Maven/Gradle setup, dependencies
-- [ ] 2. Ingestion — SQL file reader
-- [ ] 3. Ingestion — dbt manifest.json parser
-- [ ] 4. Parser — Calcite wrapper with BigQuery dialect
-- [ ] 5. Extractor — SqlShuttle AST walker, basic SELECT/FROM
-- [ ] 6. Extractor — CTE and subquery handling
-- [ ] 7. Extractor — expression tracking (`a + b AS c`)
-- [ ] 8. Graph — JGraphT ColumnNode DAG
-- [ ] 9. Analysis — upstream traversal
-- [ ] 10. Analysis — downstream traversal
-- [ ] 11. Output — text tree renderer
-- [ ] 12. Output — DOT/Graphviz renderer
-- [ ] 13. Output — JSON renderer
-- [ ] 14. CLI — picocli wiring
