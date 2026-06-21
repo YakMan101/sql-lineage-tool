@@ -20,8 +20,8 @@ repositories {
 }
 
 dependencies {
-    // SQL parsing
-    implementation 'org.apache.calcite:calcite-core:1.37.0'
+    // SQL parsing — ZetaSQL is a native C++ library loaded via JNI, not a Maven dependency.
+    // See README for build instructions. The JNI wrapper jar is loaded from native/ at runtime.
 
     // Graph data structure
     implementation 'org.jgrapht:jgrapht-core:1.5.2'

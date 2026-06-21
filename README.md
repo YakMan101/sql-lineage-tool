@@ -1,6 +1,6 @@
 # SQL Lineage Tool
 
-A column-level SQL lineage tool built in Java using Apache Calcite, initially targeting BigQuery/dbt projects with the intent to support general SQL dialects over time.
+A column-level SQL lineage tool built in Java using ZetaSQL, targeting BigQuery/dbt projects with the intent to support general SQL dialects over time.
 
 ---
 
@@ -16,9 +16,9 @@ A column-level SQL lineage tool built in Java using Apache Calcite, initially ta
 ├─────────────────────────────────────────────┤
 │           Lineage Graph (DAG)               │  ← JGraphT, nodes=columns, edges=deps
 ├─────────────────────────────────────────────┤
-│         Lineage Extractor                   │  ← walks AST, builds graph
+│         Lineage Extractor                   │  ← walks resolved AST, builds graph
 ├─────────────────────────────────────────────┤
-│           Parser Layer                      │  ← Calcite SqlParser + dialect config
+│           Parser Layer                      │  ← ZetaSQL via JNI, native BigQuery
 ├─────────────────────────────────────────────┤
 │          Ingestion Layer                    │  ← SQL files, dbt manifest.json, BQ catalog
 └─────────────────────────────────────────────┘
@@ -42,7 +42,7 @@ load cache → Analysis → Output
 
 On startup, file mtimes are compared against the cache timestamp. For dbt projects, only `manifest.json` needs to be watched — `dbt compile` regenerates it and all compiled SQL together, so it acts as a single invalidation signal. For raw SQL projects, individual file mtimes are checked.
 
-**Cache invalidation strategy:** full rebuild if anything changed. Incremental per-model rebuild (re-parse only changed models + remove their old edges) is a later optimisation — Calcite is fast enough that rebuilding 50-100 models takes milliseconds.
+**Cache invalidation strategy:** full rebuild if anything changed. Incremental per-model rebuild (re-parse only changed models + remove their old edges) is a later optimisation — ZetaSQL is fast enough that rebuilding 50-100 models takes milliseconds.
 
 ```
 cache/
@@ -61,18 +61,19 @@ Read SQL from multiple sources — done upfront at build time, not per query:
 
 ### 2. Parser
 Done upfront at build time alongside ingestion — not live per query:
-- Use `Apache Calcite SqlParser` to produce a `SqlNode` AST
-- Wrap behind a `SqlDialectParser` interface so BigQuery dialect can be swapped for Snowflake/Redshift/etc without touching downstream code
-- Calcite supports BigQuery via `SqlDialect.DatabaseProduct.BIG_QUERY`
+- Use **ZetaSQL** (Google's native BigQuery parser, called via JNI) to produce a fully resolved AST
+- ZetaSQL performs semantic analysis — column references are resolved to source tables, types inferred, CTEs expanded — so the extractor receives a semantically complete tree
+- Wrap behind a `SqlDialectParser` interface so the parser can be swapped for other dialects without touching downstream code
+- No BigQuery-specific preprocessing needed — ZetaSQL handles backticks, `SELECT * EXCEPT`, `ARRAY<TYPE>`, `STRUCT`, `QUALIFY` natively
 - All SQL files are parsed in one pass and ASTs fed directly into the extractor
 
 ### 3. Lineage Extractor
-- Implement `SqlShuttle` (Calcite's AST visitor) to walk the tree
-- Extract `source_table.column → target_table.column` edges
+- Walk the ZetaSQL resolved AST to extract `source_table.column → target_table.column` edges
+- Because ZetaSQL has already resolved aliases and names, the extractor focuses on edge construction rather than name resolution
 - Handle explicitly:
-  - CTEs
+  - CTEs (resolved by ZetaSQL, edges still need extracting)
   - Subqueries
-  - `SELECT *` expansion
+  - `SELECT *` (already expanded by ZetaSQL's semantic analysis)
   - Expressions (`a + b AS c` means both `a` and `b` feed `c`)
 
 ### 4. Lineage Graph
@@ -93,15 +94,44 @@ Done upfront at build time alongside ingestion — not live per query:
 
 ---
 
+## ZetaSQL Setup
+
+ZetaSQL is a C++ library called via JNI — there is no Maven artifact. It must be built from source once per target platform and bundled alongside the JAR.
+
+```
+# One-time build (requires Bazel)
+git clone https://github.com/google/zetasql
+cd zetasql
+bazel build //zetasql/local_service:run_server
+```
+
+Platform-specific native binaries (`.so` / `.dylib`) are placed under `native/` and loaded at runtime via `System.loadLibrary()`.
+
+---
+
 ## Package Structure
 
 ```
 src/main/java/com/sqllineage/
 ├── cli/          ← entry point, picocli commands
 ├── ingestion/    ← file reader, dbt manifest parser
-├── parser/       ← Calcite wrapper, SqlDialectParser interface
-├── extractor/    ← SqlShuttle implementation, AST walking
+├── parser/       ← ZetaSQL JNI wrapper, SqlDialectParser interface
+├── extractor/    ← AST walker, builds column lineage edges
 ├── graph/        ← ColumnNode, LineageGraph (JGraphT wrapper)
 ├── analysis/     ← upstream/downstream traversal logic
 └── output/       ← TextRenderer, DotRenderer, JsonRenderer
 ```
+
+---
+
+## SQL Parser Options Considered
+
+| Library | BigQuery Support | Column Lineage Built-in | Java Native | Maturity | Key Pro | Key Con |
+|---|---|---|---|---|---|---|
+| **ZetaSQL (JNI)** | Native — Google's actual parser | Partial — semantic analysis resolves names/aliases, you walk the AST for edges | No — C++ via JNI | High (production at Google) | Perfect BQ parsing, semantic resolution done for you, `SELECT *` expanded, aliases resolved | One-time Bazel build, platform-specific binaries, no Maven artifact |
+| **Apache Calcite** | Via preprocessing only | Yes — `SqlToRelConverter` tracks full column provenance natively | Yes | Very high (Hive, Flink, Beam) | Best lineage primitives of any option, Maven artifact, huge ecosystem | 4 BQ patterns need preprocessing, `ARRAY<TYPE>` and `STRUCT` are hard to shim |
+| **ANTLR4 + BQ grammar** | Full — community BQ grammar exists | No — raw parse tree only, write everything yourself | Yes | High (ANTLR4 itself), Medium (BQ grammar) | Maximum control, full BQ syntax coverage | Most work — alias resolution, CTE expansion, `SELECT *` all manual |
+| **JSQLParser** | Partial — backticks work, `ARRAY<TYPE>` and `* EXCEPT` need preprocessing | No | Yes | High (5k stars, active) | Simple Maven dep, handles most common SQL, easy AST | Less BQ coverage than Calcite preprocessing path, no lineage primitives |
+| **Trino Parser** | Good — Trino covers most BQ patterns | No | Yes | Very high (10k stars) | Excellent AST quality, extractable as standalone dep | Trino dialect ≠ BigQuery, you write all lineage logic, large transitive deps |
+| **sqlglot_java (gtkcyber)** | Claims full | No | Yes | Very low (0 stars, 1 contributor) | Native Java, no setup overhead | Unproven in production, may silently misparse, no community |
+| **ZetaSQL Python via subprocess** | Native | No | No — subprocess call | High | Sidesteps JNI complexity | Subprocess overhead, not Java, serialisation cost per query |

@@ -8,6 +8,16 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class Ingestion {
+
+    enum TableType { MODEL, SEED, SOURCE }
+
+    record TableEntry(
+        String bqTablePath,
+        String localFilePath,
+        String compiledFilePath,
+        TableType tableType
+    ) {}
+
     public static void main(String[] args) {
         // TODO
     }
@@ -15,41 +25,69 @@ public class Ingestion {
     public static JsonNode readManifestJson(String manifestPath) throws IOException {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode manifest = objectMapper.readTree(new File(manifestPath));
-        
         return manifest;
     }
 
-    public static List<String> gatherTables(JsonNode manifest) {
-        List<String> tables = new ArrayList<>();
+    public static List<TableEntry> gatherTables(JsonNode manifest) {
+        List<TableEntry> tables = new ArrayList<>();
         tables.addAll(getNodes(manifest));
         tables.addAll(getSources(manifest));
         return tables;
     }
 
-    private static List<String> getNodes(JsonNode manifest) {
-        List<String> tables = new ArrayList<>();
+    private static List<TableEntry> getNodes(JsonNode manifest) {
+        List<TableEntry> tables = new ArrayList<>();
         JsonNode nodes = manifest.get("nodes");
         if (nodes == null) return tables;
 
-        nodes.forEach(node -> {
-            String resourceType = node.path("resource_type").asText();
+        nodes.forEach(
+            node -> {
+                String resourceType = node.path("resource_type").asText();
                 if ("model".equals(resourceType) || "seed".equals(resourceType)) {
-                    tables.add(toFullyQualifiedTableName(node));
+                    TableType tableType = "seed".equals(resourceType) ? TableType.SEED : TableType.MODEL;
+                    tables.add(
+                        new TableEntry(
+                            toFullyQualifiedTableName(node),
+                            node.path("original_file_path").asText(),
+                            getCompiledPath(node),
+                            tableType
+                        )
+                    );
                 }
-        });
+            }
+        );
 
         return tables;
     }
 
-    private static List<String> getSources(JsonNode manifest) {
-        List<String> tables = new ArrayList<>();
+    private static List<TableEntry> getSources(JsonNode manifest) {
+        List<TableEntry> tables = new ArrayList<>();
         JsonNode sources = manifest.get("sources");
         if (sources == null) return tables;
 
-        sources.fields().forEachRemaining(entry -> tables.add(
-            toFullyQualifiedTableName(entry.getValue())
-        ));
+        sources.forEach(
+            source -> tables.add(
+                new TableEntry(
+                    toFullyQualifiedTableName(source),
+                    source.path("original_file_path").asText(),
+                    null,
+                    TableType.SOURCE
+                )
+            )
+        );
+
         return tables;
+    }
+
+    private static String getCompiledPath(JsonNode node) {
+        JsonNode compiledPath = node.path("compiled_path");
+        if (compiledPath.isNull() || compiledPath.isMissingNode()) {
+            throw new IllegalStateException(
+                "Compiled path missing for node '" + node.path("name").asText() + "'. " +
+                "Run 'dbt compile' to generate compiled SQL files before running this tool."
+            );
+        }
+        return compiledPath.asText();
     }
 
     private static String toFullyQualifiedTableName(JsonNode node) {
@@ -58,7 +96,6 @@ public class Ingestion {
         String name = node.path("name").asText();
         return database + "." + schema + "." + name;
     }
-
 
     public static void gatherColumnsForTable(String tableName) {
         // TODO
