@@ -2,21 +2,14 @@ package com.sqllineage.ingestion;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sqllineage.model.TableEntry;
+import com.sqllineage.model.TableType;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
 public class Ingestion {
-
-    enum TableType { MODEL, SEED, SOURCE }
-
-    record TableEntry(
-        String bqTablePath,
-        String localFilePath,
-        String compiledFilePath,
-        TableType tableType
-    ) {}
 
     public static void main(String[] args) {
         // TODO
@@ -28,14 +21,14 @@ public class Ingestion {
         return manifest;
     }
 
-    public static List<TableEntry> gatherTables(JsonNode manifest) {
+    public static List<TableEntry> gatherTables(JsonNode manifest, String dbtProjectRoot) {
         List<TableEntry> tables = new ArrayList<>();
-        tables.addAll(getNodes(manifest));
+        tables.addAll(getNodes(manifest, dbtProjectRoot));
         tables.addAll(getSources(manifest));
         return tables;
     }
 
-    private static List<TableEntry> getNodes(JsonNode manifest) {
+    private static List<TableEntry> getNodes(JsonNode manifest, String dbtProjectRoot) {
         List<TableEntry> tables = new ArrayList<>();
         JsonNode nodes = manifest.get("nodes");
         if (nodes == null) return tables;
@@ -44,12 +37,13 @@ public class Ingestion {
             node -> {
                 String resourceType = node.path("resource_type").asText();
                 if ("model".equals(resourceType) || "seed".equals(resourceType)) {
-                    TableType tableType = "seed".equals(resourceType) ? TableType.SEED : TableType.MODEL;
+                    boolean isSeed = "seed".equals(resourceType);
+                    TableType tableType = isSeed ? TableType.SEED : TableType.MODEL;
                     tables.add(
                         new TableEntry(
                             toFullyQualifiedTableName(node),
                             node.path("original_file_path").asText(),
-                            getCompiledPath(node),
+                            isSeed ? null : dbtProjectRoot + "/" + getCompiledPath(node),
                             tableType
                         )
                     );
@@ -95,14 +89,6 @@ public class Ingestion {
         String schema = node.path("schema").asText();
         String name = node.path("name").asText();
         return database + "." + schema + "." + name;
-    }
-
-    public static void gatherColumnsForTable(String tableName) {
-        // TODO
-    }
-
-    public static void buildTableColumnMap() {
-        // TODO
     }
 
 }
