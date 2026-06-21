@@ -237,23 +237,30 @@ Where `preprocessed(sql)` is a simple regex pass that strips `ARRAY<STRING>` ang
 
 ### BigQuery patterns and how each is handled
 
-| Pattern | Occurrences in codebase | Approach |
-|---|---|---|
-| Backtick identifiers | ~17,000 | `Quoting.BACK_TICK` config flag |
-| `FORMAT_DATE`, `FORMAT_TIMESTAMP` | ~473 | `SqlConformanceEnum.LENIENT` config flag |
-| `CAST(col AS ARRAY<STRING>)` | ~1,000 | Regex preprocess — strip type parameter |
-| `SELECT * EXCEPT (...)` | ~2,400 | JavaCC grammar extension (above) |
+| Pattern | Approach |
+|---|---|
+| Backtick identifiers | `Quoting.BACK_TICK` config flag |
+| `FORMAT_DATE`, `FORMAT_TIMESTAMP` | `SqlConformanceEnum.LENIENT` config flag |
+| `CAST(col AS ARRAY<STRING>)` | Regex preprocess — strip type parameter |
+| `SELECT * EXCEPT (...)` | JavaCC grammar extension (above) |
 
 ---
 
 ## SQL Parser Options Considered
 
-| Library | BigQuery Support | Column Lineage Built-in | Java Native | Maturity | Key Pro | Key Con |
-|---|---|---|---|---|---|---|
-| **ZetaSQL (JNI)** | Native — Google's actual parser | Partial — semantic analysis resolves names/aliases, you walk the AST for edges | No — C++ via JNI | High (production at Google) | Perfect BQ parsing, semantic resolution done for you, `SELECT *` expanded, aliases resolved | One-time Bazel build, platform-specific binaries, no Maven artifact |
-| **Apache Calcite** | Via preprocessing only | Yes — `SqlToRelConverter` tracks full column provenance natively | Yes | Very high (Hive, Flink, Beam) | Best lineage primitives of any option, Maven artifact, huge ecosystem | 4 BQ patterns need preprocessing, `ARRAY<TYPE>` and `STRUCT` are hard to shim |
-| **ANTLR4 + BQ grammar** | Full — community BQ grammar exists | No — raw parse tree only, write everything yourself | Yes | High (ANTLR4 itself), Medium (BQ grammar) | Maximum control, full BQ syntax coverage | Most work — alias resolution, CTE expansion, `SELECT *` all manual |
-| **JSQLParser** | Partial — backticks work, `ARRAY<TYPE>` and `* EXCEPT` need preprocessing | No | Yes | High (5k stars, active) | Simple Maven dep, handles most common SQL, easy AST | Less BQ coverage than Calcite preprocessing path, no lineage primitives |
-| **Trino Parser** | Good — Trino covers most BQ patterns | No | Yes | Very high (10k stars) | Excellent AST quality, extractable as standalone dep | Trino dialect ≠ BigQuery, you write all lineage logic, large transitive deps |
-| **sqlglot_java (gtkcyber)** | Claims full | No | Yes | Very low (0 stars, 1 contributor) | Native Java, no setup overhead | Unproven in production, may silently misparse, no community |
-| **ZetaSQL Python via subprocess** | Native | No | No — subprocess call | High | Sidesteps JNI complexity | Subprocess overhead, not Java, serialisation cost per query |
+Why Java? To be honest, its because I felt like it. But if I really had to justify my position:
+- Perfomance at scale - JIT compilation, true multithreading (no GIL), and lower GC latency mean parsing and graph traversal at scale is meaningfully faster.
+- Distribution - single JAR with no native dependencies -> much easier to build into a VScode extension.
+- Type Safety - Can sometimes catch bugs at compile time instead of runtime and more preventative of silent misparses / null passings.
+
+A more pragmatic approach would have been Python + SQLGlot which provides native BigQuery support and a simple API.
+
+| Library | BigQuery Support | Column Lineage Built-in | Maturity | Key Pro | Key Con |
+|---|---|---|---|---|---|
+| **Apache Calcite** | Via preprocessing only | Yes — `SqlToRelConverter` tracks full column provenance natively | Very high (Hive, Flink, Beam) | Best lineage primitives of any option, Maven artifact, huge ecosystem | 4 BQ patterns need preprocessing, `ARRAY<TYPE>` and `STRUCT` are hard to shim |
+| **ZetaSQL (JNI)** | Native — Google's actual parser | Partial — semantic analysis resolves names/aliases, you walk the AST for edges | High (production at Google) | Perfect BQ parsing, semantic resolution done for you, `SELECT *` expanded, aliases resolved | One-time Bazel build, platform-specific binaries, no Maven artifact |
+| **ANTLR4 + BQ grammar** | Full — community BQ grammar exists | No — raw parse tree only, write everything yourself | High (ANTLR4 itself), Medium (BQ grammar) | Maximum control, full BQ syntax coverage | Most work — alias resolution, CTE expansion, `SELECT *` all manual |
+| **JSQLParser** | Partial — backticks work, `ARRAY<TYPE>` and `* EXCEPT` need preprocessing | No | High (5k stars, active) | Simple Maven dep, handles most common SQL, easy AST | Less BQ coverage than Calcite preprocessing path, no lineage primitives |
+| **Trino Parser** | Good — Trino covers most BQ patterns | No | Very high (10k stars) | Excellent AST quality, extractable as standalone dep | Trino dialect ≠ BigQuery, you write all lineage logic, large transitive deps |
+| **sqlglot_java (gtkcyber)** | Claims full | No | Very low (0 stars, 1 contributor) | Native Java, no setup overhead | Unproven in production, may silently misparse, no community |
+| **ZetaSQL Python via subprocess** | Native | No | High | Sidesteps JNI complexity | Subprocess overhead, not Java, serialisation cost per query |
