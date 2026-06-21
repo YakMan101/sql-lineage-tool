@@ -264,3 +264,13 @@ A more pragmatic approach would have been Python + SQLGlot which provides native
 | **Trino Parser** | Good — Trino covers most BQ patterns | No | Very high (10k stars) | Excellent AST quality, extractable as standalone dep | Trino dialect ≠ BigQuery, you write all lineage logic, large transitive deps |
 | **sqlglot_java (gtkcyber)** | Claims full | No | Very low (0 stars, 1 contributor) | Native Java, no setup overhead | Unproven in production, may silently misparse, no community |
 | **ZetaSQL Python via subprocess** | Native | No | High | Sidesteps JNI complexity | Subprocess overhead, not Java, serialisation cost per query |
+
+---
+
+## Prior Art
+
+Two existing tools informed the design of this project — neither was used directly.
+
+**[borjavb/bq-lineage-tool](https://github.com/borjavb/bq-lineage-tool)** — Java, ZetaSQL-backed column lineage tool for BigQuery. The `ASTExplorer.java` class has a clean `checkNodeType` dispatch switch (one handler method per AST node type) that is the direct inspiration for the extractor walking pattern used here. Unmaintained as of ~2021.
+
+**[GoogleCloudPlatform/bigquery-data-lineage](https://github.com/GoogleCloudPlatform/bigquery-data-lineage)** — Google's own lineage tool, also Java. Operates by parsing BigQuery audit logs rather than static SQL analysis — a fundamentally different approach (runtime vs static). Unmaintained as of ~2022.
