@@ -61,6 +61,10 @@ public class Extractor {
   }
 
   private void extractSelect(SqlSelect select, String tableId, Map<String, String> cteScope) {
+    // TODO: capture select.getWhere() as a SQL snippet and attach it to each TransformNode
+    // produced by this SELECT. Useful context when a user expands a CTE transformation in a UI —
+    // the WHERE clause doesn't affect what produced a column, but it does affect which rows are
+    // visible, which is relevant for understanding the full logic of the transform.
     Map<String, String> sourceScope = buildSourceScope(select.getFrom(), cteScope);
     for (SqlNode selectItem : select.getSelectList()) {
       String outputName;
