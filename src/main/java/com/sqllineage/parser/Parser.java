@@ -119,6 +119,14 @@ public class Parser {
     result = RESERVED_IDENTIFIER_PATTERN.matcher(result).replaceAll("`$1`");
     result = result.replaceAll("__CASTTYPE_(\\w+)__", "$1");
 
+    /*
+    TODO: BREAKING CASES TO ADDRESS:
+    - quotes in quotes e.g: "'"
+    - quotes in strings e.g: "i'm buying a house"
+    - rank parse error
+    - result parse error
+    - [] brackets breaking
+    */
     return result;
   }
 }
