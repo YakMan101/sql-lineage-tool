@@ -13,7 +13,6 @@ import com.sqllineage.parser.Parser;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
-import org.apache.calcite.sql.parser.SqlParseException;
 
 /** Entry point for the SQL lineage CLI. */
 public class Main {
@@ -24,7 +23,7 @@ public class Main {
   private static final String YELLOW = "\033[33m";
 
   /** Runs the lineage tool. */
-  public static void main(String[] args) throws IOException, SqlParseException {
+  public static void main(String[] args) throws IOException {
     // TODO: Refactor some of the below code to their own methods for readability
     if (args.length < 2) {
       System.err.println("Usage: lineage <table> <column> [upstream|downstream] [text|mermaid]");
@@ -107,7 +106,7 @@ public class Main {
     return DIM + tablePrefix + RESET + tableName + "." + BOLD_CYAN + node.columnName() + RESET;
   }
 
-  private static LineageGraph buildGraph() throws IOException, SqlParseException {
+  private static LineageGraph buildGraph() throws IOException {
     JsonNode manifest = Ingestion.readManifestJson("dbt_project/target/manifest.json");
     List<TableEntry> tables = Ingestion.gatherTables(manifest, "dbt_project");
 
