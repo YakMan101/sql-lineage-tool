@@ -29,11 +29,11 @@ public class LineageGraph {
   public Set<ColumnNode> upstreamColumns(ColumnNode node) {
     return graph.incomingEdgesOf(node).stream()
         .map(graph::getEdgeSource)
-        .filter(n -> n instanceof TransformNode)
-        .flatMap(t -> graph.incomingEdgesOf(t).stream()
-        .map(graph::getEdgeSource))
-        .filter(n -> n instanceof ColumnNode)
-        .map(n -> (ColumnNode) n)
+        .filter(lineageNode -> lineageNode instanceof TransformNode)
+        .flatMap(transform -> graph.incomingEdgesOf(transform).stream()
+            .map(graph::getEdgeSource))
+        .filter(lineageNode -> lineageNode instanceof ColumnNode)
+        .map(lineageNode -> (ColumnNode) lineageNode)
         .collect(Collectors.toSet());
   }
 
@@ -41,11 +41,11 @@ public class LineageGraph {
   public Set<ColumnNode> downstreamColumns(ColumnNode node) {
     return graph.outgoingEdgesOf(node).stream()
         .map(graph::getEdgeTarget)
-        .filter(n -> n instanceof TransformNode)
-        .flatMap(t -> graph.outgoingEdgesOf(t).stream()
-        .map(graph::getEdgeTarget))
-        .filter(n -> n instanceof ColumnNode)
-        .map(n -> (ColumnNode) n)
+        .filter(lineageNode -> lineageNode instanceof TransformNode)
+        .flatMap(transform -> graph.outgoingEdgesOf(transform).stream()
+            .map(graph::getEdgeTarget))
+        .filter(lineageNode -> lineageNode instanceof ColumnNode)
+        .map(lineageNode -> (ColumnNode) lineageNode)
         .collect(Collectors.toSet());
   }
 
@@ -64,41 +64,41 @@ public class LineageGraph {
     return buildDownstreamTree(node, new HashSet<>());
   }
 
-  private String incomingTransformLabel(ColumnNode node) {
+  private TransformNode incomingTransform(ColumnNode node) {
     return graph.incomingEdgesOf(node).stream()
         .map(graph::getEdgeSource)
-        .filter(n -> n instanceof TransformNode)
-        .map(n -> ((TransformNode) n).label())
+        .filter(lineageNode -> lineageNode instanceof TransformNode)
+        .map(lineageNode -> (TransformNode) lineageNode)
         .findFirst()
-        .orElse("");
+        .orElse(null);
   }
 
   private LineageTree buildUpstreamTree(ColumnNode node, Set<ColumnNode> visited) {
     visited.add(node);
-    String via = incomingTransformLabel(node);
+    TransformNode transform = incomingTransform(node);
     List<LineageTree> children = new ArrayList<>();
-    
+
     for (ColumnNode parent : upstreamColumns(node)) {
       if (!visited.contains(parent)) {
         children.add(buildUpstreamTree(parent, visited));
       }
     }
-    
-    return new LineageTree(node, via, children);
+
+    return new LineageTree(node, transform, children);
   }
 
   private LineageTree buildDownstreamTree(ColumnNode node, Set<ColumnNode> visited) {
     visited.add(node);
-    String via = incomingTransformLabel(node);
+    TransformNode transform = incomingTransform(node);
     List<LineageTree> children = new ArrayList<>();
-    
+
     for (ColumnNode child : downstreamColumns(node)) {
       if (!visited.contains(child)) {
         children.add(buildDownstreamTree(child, visited));
       }
     }
-    
-    return new LineageTree(node, via, children);
+
+    return new LineageTree(node, transform, children);
   }
 
   /** Returns all nodes in the graph. */

@@ -34,6 +34,9 @@ dependencies {
     implementation 'info.picocli:picocli:4.7.6'
     annotationProcessor 'info.picocli:picocli-codegen:4.7.6'
 
+    // Silence SLF4J "no providers found" warnings from Calcite
+    runtimeOnly 'org.slf4j:slf4j-nop:2.0.13'
+
     // Testing
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'

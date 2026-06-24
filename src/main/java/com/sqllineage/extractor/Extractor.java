@@ -251,6 +251,8 @@ public class Extractor {
 
   private String unparse(SqlNode expr) {
     SqlPrettyWriter writer = new SqlPrettyWriter();
+    writer.setCaseClausesOnNewLines(true);
+    writer.setIndentation(2);
     expr.unparse(writer, 0, 0);
     
     return writer.toString();

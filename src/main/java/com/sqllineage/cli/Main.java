@@ -7,6 +7,7 @@ import com.sqllineage.ingestion.Ingestion;
 import com.sqllineage.model.ColumnNode;
 import com.sqllineage.model.LineageTree;
 import com.sqllineage.model.TableEntry;
+import com.sqllineage.output.MermaidRenderer;
 import com.sqllineage.parser.Parser;
 import java.io.IOException;
 import java.util.List;
@@ -24,15 +25,17 @@ public class Main {
 
   /** Runs the lineage tool. */
   public static void main(String[] args) throws IOException, SqlParseException {
+    // TODO: Refactor some of the below code to their own methods for readability
     if (args.length < 2) {
-      System.err.println("Usage: lineage <table> <column> [upstream|downstream]");
-      System.err.println("  e.g. lineage stg_orders ORDER_KEY upstream");
+      System.err.println("Usage: lineage <table> <column> [upstream|downstream] [text|mermaid]");
+      System.err.println("  e.g. lineage stg_orders IS_CLOSED upstream mermaid");
       System.exit(1);
     }
 
     String tableArg = args[0];
     String columnArg = args[1].toUpperCase();
     String direction = args.length >= 3 ? args[2].toLowerCase() : "upstream";
+    String format = args.length >= 4 ? args[3].toLowerCase() : "text";
 
     LineageGraph graph = buildGraph();
     
@@ -69,7 +72,11 @@ public class Main {
       return;
     }
 
-    printTree(tree, "", "");
+    if (format.equals("mermaid")) {
+      System.out.println(new MermaidRenderer().render(tree));
+    } else {
+      printTree(tree, "", "");
+    }
   }
 
   private static void printTree(LineageTree tree, String connector, String prefix) {
@@ -79,6 +86,7 @@ public class Main {
     System.out.println(DIM + connector + RESET + formatColumn(tree.node()) + transformLabel);
 
     List<LineageTree> children = tree.children();
+    
     for (int index = 0; index < children.size(); index++) {
       boolean isLast = index == children.size() - 1;
       String childConnector = prefix + (isLast ? "└─ " : "├─ ");
@@ -106,9 +114,11 @@ public class Main {
 
     LineageGraph graph = new LineageGraph();
     Extractor extractor = new Extractor(graph);
+    
     for (Map.Entry<TableEntry, SqlNode> entry : asts.entrySet()) {
       extractor.extractTable(entry.getKey(), entry.getValue());
     }
+    
     return graph;
   }
 }
