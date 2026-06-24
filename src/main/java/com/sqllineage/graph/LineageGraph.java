@@ -77,11 +77,13 @@ public class LineageGraph {
     visited.add(node);
     String via = incomingTransformLabel(node);
     List<LineageTree> children = new ArrayList<>();
+    
     for (ColumnNode parent : upstreamColumns(node)) {
       if (!visited.contains(parent)) {
         children.add(buildUpstreamTree(parent, visited));
       }
     }
+    
     return new LineageTree(node, via, children);
   }
 
@@ -89,11 +91,13 @@ public class LineageGraph {
     visited.add(node);
     String via = incomingTransformLabel(node);
     List<LineageTree> children = new ArrayList<>();
+    
     for (ColumnNode child : downstreamColumns(node)) {
       if (!visited.contains(child)) {
         children.add(buildDownstreamTree(child, visited));
       }
     }
+    
     return new LineageTree(node, via, children);
   }
 

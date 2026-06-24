@@ -69,6 +69,7 @@ public class Extractor {
     for (SqlNode selectItem : select.getSelectList()) {
       String outputName;
       SqlNode expr;
+      
       if (selectItem.getKind() == SqlKind.AS) {
         SqlBasicCall asCall = (SqlBasicCall) selectItem;
         expr = asCall.operand(0);
@@ -79,27 +80,32 @@ public class Extractor {
       } else {
         continue;
       }
+      
       List<ColumnNode> inputs = collectInputColumns(expr, tableId, cteScope, sourceScope);
       String label = classifyTransform(expr);
       String sqlSnippet = unparse(expr);
       ColumnNode output = new ColumnNode(tableId, outputName);
       String transformId = tableId + "#" + outputName;
       TransformNode transform = new TransformNode(transformId, label, sqlSnippet);
+      
       for (ColumnNode input : inputs) {
         graph.addEdge(input, transform);
       }
+      
       graph.addEdge(transform, output);
     }
   }
 
-  private Map<String, String> buildSourceScope(SqlNode from, Map<String, String> cteScope) {
+  private Map<String, String> buildSourceScope(SqlNode fromClause, Map<String, String> cteScope) {
     Map<String, String> scope = new HashMap<>();
-    if (from == null) {
+
+    if (fromClause == null) {
       return scope;
     }
-    switch (from.getKind()) {
+
+    switch (fromClause.getKind()) {
       case IDENTIFIER -> {
-        SqlIdentifier identifier = (SqlIdentifier) from;
+        SqlIdentifier identifier = (SqlIdentifier) fromClause;
         String tableId = String.join(".", identifier.names);
         String resolved = cteScope.getOrDefault(
             identifier.names.get(identifier.names.size() - 1), tableId);
@@ -107,7 +113,7 @@ public class Extractor {
         scope.put("", resolved);
       }
       case AS -> {
-        SqlBasicCall asCall = (SqlBasicCall) from;
+        SqlBasicCall asCall = (SqlBasicCall) fromClause;
         SqlNode source = asCall.operand(0);
         String alias = ((SqlIdentifier) asCall.operand(1)).getSimple();
         String resolved = resolveFromSource(source, cteScope);
@@ -115,13 +121,14 @@ public class Extractor {
         scope.put("", resolved);
       }
       case JOIN -> {
-        SqlJoin join = (SqlJoin) from;
+        SqlJoin join = (SqlJoin) fromClause;
         scope.putAll(buildSourceScope(join.getLeft(), cteScope));
         scope.putAll(buildSourceScope(join.getRight(), cteScope));
         scope.remove("");
       }
       default -> { /* subqueries, TVFs — skip for now */ }
     }
+    
     return scope;
   }
 
@@ -130,6 +137,7 @@ public class Extractor {
       String lastName = identifier.names.get(identifier.names.size() - 1);
       return cteScope.getOrDefault(lastName, String.join(".", identifier.names));
     }
+    
     return "#subquery";
   }
 
@@ -153,8 +161,10 @@ public class Extractor {
   private List<ColumnNode> resolveIdentifier(
       SqlIdentifier identifier,
       Map<String, String> cteScope,
-      Map<String, String> sourceScope) {
+      Map<String, String> sourceScope
+  ) {
     String column = identifier.names.get(identifier.names.size() - 1);
+    
     if (identifier.names.size() == 1) {
       String sourceTableId = sourceScope.get("");
       if (sourceTableId != null) {
@@ -162,11 +172,15 @@ public class Extractor {
       }
       return List.of();
     }
+    
     String qualifier = identifier.names.get(0);
     String resolvedTableId = cteScope.containsKey(qualifier)
         ? cteScope.get(qualifier)
         : sourceScope.getOrDefault(
-            qualifier, String.join(".", identifier.names.subList(0, identifier.names.size() - 1)));
+            qualifier, String.join(
+              ".", identifier.names.subList(0, identifier.names.size() - 1))
+            );
+    
     return List.of(new ColumnNode(resolvedTableId, column));
   }
 
@@ -176,16 +190,20 @@ public class Extractor {
       Map<String, String> cteScope,
       Map<String, String> sourceScope) {
     List<ColumnNode> results = new ArrayList<>();
+    
     for (SqlNode when : sqlCase.getWhenOperands()) {
       results.addAll(collectInputColumns(when, tableId, cteScope, sourceScope));
     }
+    
     for (SqlNode then : sqlCase.getThenOperands()) {
       results.addAll(collectInputColumns(then, tableId, cteScope, sourceScope));
     }
+    
     if (sqlCase.getElseOperand() != null) {
       results.addAll(
           collectInputColumns(sqlCase.getElseOperand(), tableId, cteScope, sourceScope));
     }
+    
     return results;
   }
 
@@ -197,12 +215,15 @@ public class Extractor {
     if (!(expr instanceof SqlCall call)) {
       return List.of();
     }
+    
     List<ColumnNode> results = new ArrayList<>();
+    
     for (SqlNode operandNode : call.getOperandList()) {
       if (operandNode != null) {
         results.addAll(collectInputColumns(operandNode, tableId, cteScope, sourceScope));
       }
     }
+    
     return results;
   }
 
@@ -224,12 +245,14 @@ public class Extractor {
     if (expr instanceof SqlCall call) {
       return call.getOperator().getName().toUpperCase();
     }
+    
     return expr.getKind().name();
   }
 
   private String unparse(SqlNode expr) {
     SqlPrettyWriter writer = new SqlPrettyWriter();
     expr.unparse(writer, 0, 0);
+    
     return writer.toString();
   }
 }

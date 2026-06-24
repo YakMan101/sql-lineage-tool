@@ -27,6 +27,7 @@ public class Parser {
   public Map<TableEntry, SqlNode> parseCompiledModels(
       List<TableEntry> tables) throws IOException, SqlParseException {
     Map<TableEntry, SqlNode> result = new HashMap<>();
+    
     for (TableEntry table : tables) {
       if (table.tableType() == TableType.SOURCE || table.tableType() == TableType.SEED) {
         continue;
@@ -34,6 +35,7 @@ public class Parser {
       result.put(
           table, parseSqlFile(Path.of(table.compiledFilePath()), BigQuerySqlDialect.DEFAULT));
     }
+    
     return result;
   }
 
@@ -41,6 +43,7 @@ public class Parser {
   public SqlNode parseSqlFile(Path compiledSqlPath, SqlDialect dialect)
       throws IOException, SqlParseException {
     String sql = Files.readString(compiledSqlPath);
+    
     return parseSql(sql, dialect);
   }
 
@@ -50,6 +53,7 @@ public class Parser {
     SqlParser.Config config = SqlParser.config()
         .withQuoting(Quoting.BACK_TICK)
         .withConformance(SqlConformanceEnum.LENIENT);
+    
     return SqlParser.create(preprocessed, config).parseQuery();
   }
 
@@ -57,6 +61,7 @@ public class Parser {
     if (dialect instanceof BigQuerySqlDialect) {
       return stripBigQueryTypeParameters(sql);
     }
+    
     throw new UnsupportedOperationException(
         "Unsupported SQL dialect: " + dialect.getClass().getName());
   }
