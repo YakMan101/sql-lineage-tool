@@ -8,11 +8,11 @@ import com.sqllineage.model.ColumnNode;
 import com.sqllineage.model.LineageTree;
 import com.sqllineage.model.TableEntry;
 import com.sqllineage.output.MermaidRenderer;
+import com.sqllineage.parser.ParseResult;
 import com.sqllineage.parser.Parser;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
-import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.parser.SqlParseException;
 
 /** Entry point for the SQL lineage CLI. */
@@ -60,6 +60,7 @@ public class Main {
               .compareToIgnoreCase(right.tableId() + right.columnName()))
           .forEach(col -> System.err.println("  " + col.tableId() + "." + col.columnName()));
       System.exit(1);
+
       return;
     }
 
@@ -69,6 +70,7 @@ public class Main {
 
     if (tree.children().isEmpty()) {
       System.out.println(formatColumn(target) + "  (no " + direction + " lineage)");
+
       return;
     }
 
@@ -110,12 +112,13 @@ public class Main {
     List<TableEntry> tables = Ingestion.gatherTables(manifest, "dbt_project");
 
     Parser parser = new Parser();
-    Map<TableEntry, SqlNode> asts = parser.parseCompiledModels(tables);
+    Map<TableEntry, ParseResult> parseResults =
+        parser.parseCompiledModels(tables, Parser.Dialect.BIGQUERY);
 
     LineageGraph graph = new LineageGraph();
     Extractor extractor = new Extractor(graph);
-    
-    for (Map.Entry<TableEntry, SqlNode> entry : asts.entrySet()) {
+
+    for (Map.Entry<TableEntry, ParseResult> entry : parseResults.entrySet()) {
       extractor.extractTable(entry.getKey(), entry.getValue());
     }
     

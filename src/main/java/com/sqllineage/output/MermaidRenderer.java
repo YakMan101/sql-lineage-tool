@@ -59,9 +59,9 @@ public class MermaidRenderer {
 
       if (tree.transform() != null) {
         String transformNodeId = transformId(tree.transform().id());
-        String snippet = truncate(tree.sqlSnippet());
+        String nodeLabel = buildTransformLabel(tree);
         // Hexagon shape: {{label}}
-        transformLines.add(transformNodeId + "{{\"`" + escapeSnippet(snippet) + "`\"}}");
+        transformLines.add(transformNodeId + "{{\"`" + escapeSnippet(nodeLabel) + "`\"}}");
         edgeLines.add(childColId + " --> " + transformNodeId);
         edgeLines.add(transformNodeId + " --> " + parentColId);
       } else {
@@ -106,6 +106,16 @@ public class MermaidRenderer {
     return "\"" + label.replace("\"", "'") + "\"";
   }
 
+  private String buildTransformLabel(LineageTree tree) {
+    String snippet = truncate(tree.sqlSnippet());
+    String filterContext = tree.transform() != null ? tree.transform().filterContext() : "";
+    if (filterContext == null || filterContext.isEmpty()) {
+      return snippet;
+    }
+
+    return snippet + "\n\n>> " + filterContext.replace("\n", "\n>> ");
+  }
+
   private String escapeSnippet(String snippet) {
     return snippet.replace("\"", "'").replace("`", "'");
   }
@@ -114,6 +124,7 @@ public class MermaidRenderer {
     if (snippet == null || snippet.isEmpty()) {
       return "";
     }
+
     return snippet.length() > SNIPPET_MAX_LEN
         ? snippet.substring(0, SNIPPET_MAX_LEN) + "…"
         : snippet;

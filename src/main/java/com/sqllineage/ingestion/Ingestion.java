@@ -59,6 +59,8 @@ public class Ingestion {
     List<TableEntry> tables = new ArrayList<>();
     JsonNode sources = manifest.get("sources");
     
+
+    // Can only happen if ptoject has no sources - very rare.
     if (sources == null) {
       return tables;
     }

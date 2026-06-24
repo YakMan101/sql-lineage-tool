@@ -4,6 +4,7 @@ import com.sqllineage.graph.LineageGraph;
 import com.sqllineage.model.ColumnNode;
 import com.sqllineage.model.TableEntry;
 import com.sqllineage.model.TransformNode;
+import com.sqllineage.parser.ParseResult;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -14,12 +15,13 @@ import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlJoin;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.SqlOrderBy;
 import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.sql.SqlWith;
 import org.apache.calcite.sql.SqlWithItem;
 import org.apache.calcite.sql.fun.SqlCase;
-import org.apache.calcite.sql.pretty.SqlPrettyWriter;
+import org.apache.calcite.sql.parser.SqlParserPos;
 
 /** Walks Calcite ASTs and extracts column-level lineage edges into a LineageGraph. */
 public class Extractor {
@@ -32,44 +34,51 @@ public class Extractor {
   }
 
   /** Extracts lineage for a single model and adds edges to the shared graph. */
-  public void extractTable(TableEntry table, SqlNode ast) {
-    extractStatement(ast, table.bqTablePath(), new HashMap<>());
+  public void extractTable(TableEntry table, ParseResult parseResult) {
+    extractStatement(
+        parseResult.ast(), table.bqTablePath(), new HashMap<>(), parseResult.preprocessedSql(),
+        null);
   }
 
-  private void extractStatement(SqlNode node, String tableId, Map<String, String> cteScope) {
+  private void extractStatement(
+      SqlNode node, String tableId, Map<String, String> cteScope, String sql,
+      SqlNodeList orderList) {
     switch (node.getKind()) {
-      case WITH -> extractWith((SqlWith) node, tableId, cteScope);
-      case SELECT -> extractSelect((SqlSelect) node, tableId, cteScope);
-      case ORDER_BY -> {
+      case WITH -> extractWith((SqlWith) node, tableId, cteScope, sql);
+      case SELECT -> extractSelect((SqlSelect) node, tableId, cteScope, sql, orderList);
+      case ORDER_BY -> { // ORDER BY is a wrapper around a SELECT statement
         SqlOrderBy orderBy = (SqlOrderBy) node;
-        extractStatement(orderBy.query, tableId, cteScope);
+        extractStatement(orderBy.query, tableId, cteScope, sql, orderBy.orderList);
       }
       default -> { /* unsupported statement kind — skip silently */ }
     }
   }
 
-  private void extractWith(SqlWith with, String tableId, Map<String, String> cteScope) {
+  private void extractWith(
+      SqlWith with, String tableId, Map<String, String> cteScope, String sql) {
     Map<String, String> localScope = new HashMap<>(cteScope);
+
     for (SqlNode item : with.withList) {
       SqlWithItem withItem = (SqlWithItem) item;
       String cteName = withItem.name.getSimple();
       String cteTableId = tableId + "#" + cteName;
       localScope.put(cteName, cteTableId);
-      extractStatement(withItem.query, cteTableId, localScope);
+      extractStatement(withItem.query, cteTableId, localScope, sql, null);
     }
-    extractStatement(with.body, tableId, localScope);
+
+    extractStatement(with.body, tableId, localScope, sql, null);
   }
 
-  private void extractSelect(SqlSelect select, String tableId, Map<String, String> cteScope) {
-    // TODO: capture select.getWhere() as a SQL snippet and attach it to each TransformNode
-    // produced by this SELECT. Useful context when a user expands a CTE transformation in a UI —
-    // the WHERE clause doesn't affect what produced a column, but it does affect which rows are
-    // visible, which is relevant for understanding the full logic of the transform.
+  private void extractSelect(
+      SqlSelect select, String tableId, Map<String, String> cteScope, String sql,
+      SqlNodeList orderList) {
     Map<String, String> sourceScope = buildSourceScope(select.getFrom(), cteScope);
+    String filterContext = buildFilterContext(select, orderList, sql);
+    
     for (SqlNode selectItem : select.getSelectList()) {
       String outputName;
       SqlNode expr;
-      
+
       if (selectItem.getKind() == SqlKind.AS) {
         SqlBasicCall asCall = (SqlBasicCall) selectItem;
         expr = asCall.operand(0);
@@ -80,19 +89,40 @@ public class Extractor {
       } else {
         continue;
       }
-      
+
       List<ColumnNode> inputs = collectInputColumns(expr, tableId, cteScope, sourceScope);
       String label = classifyTransform(expr);
-      String sqlSnippet = unparse(expr);
+      String sqlSnippet = sliceSnippet(expr, sql);
       ColumnNode output = new ColumnNode(tableId, outputName);
       String transformId = tableId + "#" + outputName;
-      TransformNode transform = new TransformNode(transformId, label, sqlSnippet);
-      
+      TransformNode transform = new TransformNode(transformId, label, sqlSnippet, filterContext);
+
       for (ColumnNode input : inputs) {
         graph.addEdge(input, transform);
       }
-      
+
       graph.addEdge(transform, output);
+    }
+  }
+
+  private String buildFilterContext(SqlSelect select, SqlNodeList orderList, String sql) {
+    StringBuilder context = new StringBuilder();
+    appendClause(context, "WHERE", select.getWhere(), sql);
+    appendClause(context, "GROUP BY", select.getGroup(), sql);
+    appendClause(context, "HAVING", select.getHaving(), sql);
+    appendClause(context, "QUALIFY", select.getQualify(), sql);
+    appendClause(context, "ORDER BY", orderList, sql);
+
+    return context.toString().trim();
+  }
+
+  private void appendClause(StringBuilder context, String label, SqlNode clause, String sql) {
+    if (clause == null) {
+      return;
+    }
+    String snippet = sliceSnippet(clause, sql);
+    if (!snippet.isEmpty()) {
+      context.append(label).append(" ").append(snippet).append("\n");
     }
   }
 
@@ -170,6 +200,7 @@ public class Extractor {
       if (sourceTableId != null) {
         return List.of(new ColumnNode(sourceTableId, column));
       }
+
       return List.of();
     }
     
@@ -249,12 +280,36 @@ public class Extractor {
     return expr.getKind().name();
   }
 
-  private String unparse(SqlNode expr) {
-    SqlPrettyWriter writer = new SqlPrettyWriter();
-    writer.setCaseClausesOnNewLines(true);
-    writer.setIndentation(2);
-    expr.unparse(writer, 0, 0);
+  private String sliceSnippet(SqlNode expr, String sql) {
+    SqlParserPos pos = expr.getParserPosition();
     
-    return writer.toString();
+    if (pos == null || pos.equals(SqlParserPos.ZERO)) {
+      return "";
+    }
+    
+    String[] lines = sql.split("\n", -1);
+    int startLine = pos.getLineNum() - 1;
+    int endLine = pos.getEndLineNum() - 1;
+    int startCol = pos.getColumnNum() - 1;
+    int endCol = pos.getEndColumnNum();
+    
+    if (startLine < 0 || startLine >= lines.length || endLine >= lines.length) {
+      return "";
+    }
+    
+    if (startLine == endLine) {
+      return lines[startLine].substring(startCol, Math.min(endCol, lines[startLine].length()));
+    }
+    
+    StringBuilder snippet = new StringBuilder();
+    snippet.append(lines[startLine].substring(startCol)).append("\n");
+    
+    for (int lineIndex = startLine + 1; lineIndex < endLine; lineIndex++) {
+      snippet.append(lines[lineIndex]).append("\n");
+    }
+    
+    snippet.append(lines[endLine], 0, Math.min(endCol, lines[endLine].length()));
+
+    return snippet.toString();
   }
 }
